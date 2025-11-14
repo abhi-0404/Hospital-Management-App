@@ -1,0 +1,22 @@
+
+# Web framework
+Flask
+
+# Database
+Flask-SQLAlchemy
+
+# Password hashing
+passlib[bcrypt]
+
+# JSON Web Tokens
+Flask-JWT-Extended
+
+# Cross Origin Resource Sharing (CORS)
+Flask-Cors
+
+# Redis for cache / celery broker
+redis
+
+# Celery for background jobs
+celery
+
