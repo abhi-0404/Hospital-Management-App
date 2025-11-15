@@ -6,39 +6,105 @@
       :type="toast.type"
       @close="toast = null"
     />
+    
+    <div v-if="savingEdit" class="loading-overlay">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+    </div>
 
-    <nav class="top-nav">
-      <div class="container-fluid d-flex align-items-center">
-        <div class="left-actions d-flex align-items-center justify-content-start" style="flex: 1;">
-            <span class="nav-title ms-2">Admin Dashboard</span>
+    <!-- *** NEW: Patient History Modal *** -->
+    <div v-if="showHistoryModal" class="modal-overlay" @click.self="closeHistoryModal">
+      <div class="modal-content card shadow-lg" style="max-width: 600px;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Patient History for {{ historyPatientName }}</h5>
+          <button @click="closeHistoryModal" class="btn-close" aria-label="Close"></button>
         </div>
-        <div class="nav-center d-flex align-items-center justify-content-center">
-          <img :src="logo" alt="logo" class="logo-img" />
-        </div>
-        <div class="right-actions d-flex align-items-center justify-content-end" style="flex:1">
-          <span class="user-name me-3">Welcome, {{ user?.name || 'Admin' }}</span>
-          <button @click="$emit('logout')" class="logout-btn">Logout</button>
+        <div class="card-body" style="max-height: 70vh; overflow-y: auto;">
+          <div v-if="patientHistory.length === 0" class="text-center text-muted">
+            No past treatment history found.
+          </div>
+          <div v-else>
+            <div v-for="record in patientHistory" :key="record.id" class="history-record card mb-3">
+              <div class="card-body">
+                <h6 class="card-title text-primary">{{ record.doctor_name }} ({{ record.department }})</h6>
+                <p class="card-subtitle mb-2 text-muted">{{ formatToIST(record.datetime) }}</p>
+                <hr>
+                <p class="mb-1"><strong>Diagnosis:</strong> {{ record.diagnosis || 'N/A' }}</p>
+                <p class="mb-1"><strong>Visit Type:</strong> {{ record.visit_type || 'N/A' }}</p>
+                <p class="mb-1"><strong>Tests Done:</strong> {{ record.test_done || 'N/A' }}</p>
+                <p class="mb-1"><strong>Medicines:</strong></p>
+                <ul v-if="record.medicines && record.medicines.length > 0" class="small ps-4">
+                  <li v-for="(med, i) in record.medicines" :key="i">{{ med }}</li>
+                </ul>
+                <p v-else class="small ps-4">N/A</p>
+                <p class="mb-0"><strong>Prescription Notes:</strong> {{ record.prescription || 'N/A' }}</p>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
-    </nav>
+    </div>
 
-      <!-- Edit modal (inline) -->
-      <div v-if="showEditModal" class="edit-modal-wrapper">
-        <div class="edit-modal">
-          <h5 class="mb-3">Edit {{ editingType === 'doctor' ? 'Doctor' : 'Patient' }}</h5>
-          <div class="mb-2">
+
+    <!-- Create Doctor Modal -->
+    <div v-if="showCreateModal" class="modal-overlay" @click.self="closeCreateModal">
+      <div class="modal-content card shadow-lg" style="max-width: 500px;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Add New Doctor</h5>
+          <button @click="closeCreateModal" class="btn-close" aria-label="Close"></button>
+        </div>
+        <div class="card-body">
+          <form @submit.prevent="submitCreateDoctor">
+            <div class="mb-3">
+              <label class="form-label" for="create-name">Name</label>
+              <input class="form-control" id="create-name" v-model="createForm.name" required />
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="create-email">Email</label>
+              <input type="email" class="form-control" id="create-email" v-model="createForm.email" required />
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="create-pass">Password</label>
+              <input type="password" class="form-control" id="create-pass" v-model="createForm.password" placeholder="Enter a temporary password" required />
+            </div>
+            <div class="mb-3">
+              <label class="form-label" for="create-dept">Department</label>
+              <select class="form-select" id="create-dept" v-model="createForm.department_id" required>
+                <option :value="null" disabled>Select a department...</option>
+                <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
+              </select>
+            </div>
+            <div class="d-flex justify-content-end gap-2 mt-4">
+              <button type="button" class="btn btn-secondary" @click="closeCreateModal">Cancel</button>
+              <button type="submit" class="btn btn-primary" :disabled="savingEdit">Add Doctor</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <!-- Edit modal (inline) -->
+    <div v-if="showEditModal" class="modal-overlay" @click.self="closeEditModal">
+      <div class="modal-content card shadow-lg" style="max-width: 500px;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">Edit {{ editingType === 'doctor' ? 'Doctor' : 'Patient' }}</h5>
+          <button @click="closeEditModal" class="btn-close" aria-label="Close"></button>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
             <label class="form-label">Name</label>
             <input class="form-control" v-model="editForm.name" />
           </div>
-          <div class="mb-2">
+          <div class="mb-3">
             <label class="form-label">Email</label>
             <input class="form-control" v-model="editForm.email" />
           </div>
-          <div class="mb-2">
+          <div class="mb-3">
             <label class="form-label">Password</label>
             <input class="form-control" v-model="editForm.password" placeholder="Leave blank to keep current password" />
           </div>
-          <div v-if="editingType === 'doctor'" class="mb-2">
+          <div v-if="editingType === 'doctor'" class="mb-3">
             <label class="form-label">Department</label>
             <select class="form-select" v-model="editForm.department_id">
               <option v-for="d in departments" :key="d.id" :value="d.id">{{ d.name }}</option>
@@ -54,6 +120,60 @@
           </div>
         </div>
       </div>
+    </div>
+
+    <!-- Details modal -->
+    <div v-if="showDetailsModal" class="modal-overlay" @click.self="closeDetails">
+      <div class="modal-content card shadow-lg" style="max-width: 600px;">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h5 class="mb-0">{{ detailsType === 'doctor' ? 'Doctor Details' : 'Patient Details' }}</h5>
+          <button @click="closeDetails" class="btn-close" aria-label="Close"></button>
+        </div>
+        <div class="card-body">
+          <div class="details-header">
+            <div><strong>Name:</strong> {{ detailsObject?.name }}</div>
+            <div><strong>Email:</strong> {{ detailsObject?.email }}</div>
+          </div>
+          <div class="details-body">
+            <div v-if="detailsType === 'doctor'" class="mb-2"><strong>Department:</strong> {{ detailsObject?.department }}</div>
+            <div class="mb-2"><strong>Status:</strong> <span :class="detailsObject?.is_blacklisted ? 'text-danger' : 'text-success'">{{ detailsObject?.is_blacklisted ? 'Blacklisted' : 'Active' }}</span></div>
+            <div class="mb-2"><strong>Created:</strong> {{ formatToIST(detailsObject?.created_at) }}</div>
+          </div>
+          <hr />
+          <div class="mb-2"><strong>Recent Appointments</strong></div>
+          <div v-if="relatedAppointments.length === 0" class="text-muted">No recent appointments found.</div>
+          <div v-else class="details-history-list">
+            <ul class="list-unstyled small">
+              <li v-for="a in relatedAppointments.slice(0,10)" :key="a.id" class="history-item">
+                <span>#{{ a.id }} — {{ a.patient_name || a.doctor_name }}</span>
+                <span class="text-muted">{{ formatToIST(a.datetime) }}</span>
+                <span>{{ a.department }}</span>
+              </li>
+            </ul>
+          </div>
+          <div class="d-flex justify-content-end gap-2 mt-3">
+            <button class="btn btn-secondary" @click="closeDetails">Close</button>
+            <!-- *** NEW: Export History button for this patient *** -->
+            <button class="btn btn-create" @click="exportPatientHistory(detailsObject.id, detailsObject.name)">Export History</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <nav class="top-nav">
+      <div class="container-fluid d-flex align-items-center">
+        <div class="left-actions d-flex align-items-center justify-content-start" style="flex: 1;">
+            <span class="nav-title ms-2">Admin Dashboard</span>
+        </div>
+        <div class="nav-center d-flex align-items-center justify-content-center">
+          <img :src="logo" alt="logo" class="logo-img" />
+        </div>
+        <div class="right-actions d-flex align-items-center justify-content-end" style="flex:1">
+          <span class="user-name me-3">Welcome, {{ user?.name || 'Admin' }}</span>
+          <button @click="$emit('logout')" class="logout-btn">Logout</button>
+        </div>
+      </div>
+    </nav>
 
   <main class="container-fluid mt-4 admin-content admin-main-content">
       <div class="row">
@@ -106,7 +226,7 @@
           <div class="card shadow-sm">
             <div class="card-header d-flex justify-content-between align-items-center">
               <h5 class="mb-0">Registered Doctors</h5>
-              <button class="btn btn-sm btn-create" @click="createNewDoctor">+ Create New</button>
+              <button class="btn btn-sm btn-create" @click="openCreateModal">+ Create New</button>
             </div>
             <div class="card-body">
               <div class="table-responsive">
@@ -136,6 +256,7 @@
                         </span>
                       </td>
                       <td class="text-end">
+                        <button class="btn btn-sm btn-view me-1" @click="openDetails(doctor, 'doctor')">View</button>
                         <button class="btn btn-sm btn-edit me-1" @click="editItem(doctor, 'doctor')">Edit</button>
                         <button class="btn btn-sm btn-delete me-1" @click="deleteItem(doctor.user_id, doctor.name, 'doctor')">Delete</button>
                         <button class="btn btn-sm btn-blacklist" @click="blacklistItem(doctor.user_id, doctor.name)">
@@ -181,6 +302,7 @@
                         </span>
                       </td>
                       <td class="text-end">
+                        <button class="btn btn-sm btn-view me-1" @click="openDetails(patient, 'patient')">View</button>
                         <button class="btn btn-sm btn-edit me-1" @click="editItem(patient, 'patient')">Edit</button>
                         <button class="btn btn-sm btn-delete me-1" @click="deleteItem(patient.id, patient.name, 'patient')">Delete</button>
                         <button class="btn btn-sm btn-blacklist" @click="blacklistItem(patient.id, patient.name)">
@@ -224,7 +346,8 @@
                       <td>{{ appt.department }}</td>
                       <td>{{ formatToIST(appt.datetime) }}</td>
                       <td class="text-end">
-                        <button class="btn btn-sm btn-view" @click="viewHistory(appt.patient_id, appt.patient_name)">View</button>
+                        <!-- *** UPDATED: Button class and text *** -->
+                        <button class="btn btn-sm btn-view" @click="viewHistory(appt.patient_id, appt.patient_name)">View History</button>
                       </td>
                     </tr>
                   </tbody>
@@ -242,7 +365,6 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue'
 import logo from '../assets/Logo.png'
-// Import the notification component
 import ToastNotification from './ToastNotification.vue'
 
 const props = defineProps({ user: Object })
@@ -255,36 +377,72 @@ const stats = ref({ patients: 0, doctors: 0, totalAppointments: 0, upcoming: 0 }
 const doctors = ref([])
 const patients = ref([])
 const appointments = ref([])
-const departments = ref([]) // To create new doctors
+const departments = ref([]) 
 const searchQuery = ref('')
-const toast = ref(null) // For toast notifications
+const toast = ref(null) 
+const savingEdit = ref(false)
+
+// --- Edit Modal State ---
 const showEditModal = ref(false)
 const editingUser = ref(null)
 const editingType = ref(null)
 const editForm = ref({ name: '', email: '', department_id: null, is_blacklisted: false, password: '' })
-const savingEdit = ref(false)
+
+// --- *** NEW: History Modal State *** ---
+const showHistoryModal = ref(false)
+const patientHistory = ref([])
+const historyPatientName = ref('')
+
+// --- Create Modal State ---
+const showCreateModal = ref(false)
+const createForm = ref({ name: '', email: '', password: '', department_id: null })
+
+// --- Details modal state ---
+const showDetailsModal = ref(false)
+const detailsType = ref(null) // 'doctor' | 'patient'
+const detailsObject = ref(null)
+const relatedAppointments = ref([])
 
 // --- API Helper ---
-// This is the REAL fetchApi function
-async function fetchApi(endpoint, options = {}) {
+async function fetchApi(endpoint, options = {}, isFile = false) {
+  savingEdit.value = true; 
   const token = localStorage.getItem('token')
-  const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  const headers = { ...options.headers }
+  if (!isFile) {
+    headers['Content-Type'] = 'application/json'
+  }
   if (token) headers['Authorization'] = `Bearer ${token}`
 
-  const response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
-    ...options,
-    headers,
-  })
+  try {
+    const response = await fetch(`http://127.0.0.1:8000${endpoint}`, {
+      ...options,
+      headers,
+    })
 
-  let data = null
-  try { data = await response.json() } catch (e) { data = null }
-  
-  if (!response.ok) {
-    // If auth fails, log the user out
-    if (response.status === 401) emit('logout');
-    throw new Error((data && data.message) || response.statusText || 'API error')
+    if (response.status === 401) {
+      emit('logout');
+      throw new Error('Unauthorized');
+    }
+
+    if (isFile) {
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({ message: 'File download failed' }));
+        throw new Error(errData.message);
+      }
+      return await response.blob();
+    }
+    
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error((data && data.message) || response.statusText || 'API error')
+    }
+    return data
+  } catch (e) {
+    toast.value = { message: `Error: ${e.message}`, type: 'danger' }
+    throw e // Re-throw to stop calling function
+  } finally {
+    savingEdit.value = false;
   }
-  return data
 }
 
 // --- Computed filters (no change) ---
@@ -313,10 +471,11 @@ function formatToIST(isoString) {
   if (!isoString) return '—'
   try {
     const dt = new Date(isoString)
+    // Use UTC as fallback for parsing, and display in Indian Time
     return new Intl.DateTimeFormat('en-IN', {
       year: 'numeric', month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true,
-      timeZone: 'Asia/Kolkata'
+      timeZone: 'UTC' 
     }).format(dt)
   } catch (e) {
     return new Date(isoString).toLocaleString()
@@ -332,41 +491,88 @@ function sortByCreatedDesc(list) {
   })
 }
 
-async function createNewDoctor() {
-  const name = prompt("Enter new doctor's full name:");
-  if (!name) return;
-  const email = prompt("Enter new doctor's email:");
-  if (!email) return;
-  const password = prompt("Enter a temporary password:");
-  if (!password) return;
-  
-  const deptList = departments.value.map(d => `${d.id}: ${d.name}`).join('\n');
-  const deptId = prompt(`Enter Department ID:\n${deptList}`);
-  if (!deptId) return;
+// --- Create Doctor Functions ---
+function openCreateModal() {
+  createForm.value = {
+    name: '',
+    email: '',
+    password: '',
+    department_id: departments.value.length > 0 ? departments.value[0].id : null
+  }
+  showCreateModal.value = true;
+}
 
+function closeCreateModal() {
+  showCreateModal.value = false;
+}
+
+async function submitCreateDoctor() {
+  if (!createForm.value.department_id) {
+    toast.value = { message: 'Please select a department.', type: 'danger' };
+    return;
+  }
+  
   try {
     const data = await fetchApi('/api/admin/doctors', {
       method: 'POST',
-      body: JSON.stringify({
-        name: name,
-        email: email,
-        password: password,
-        department_id: parseInt(deptId)
-      })
+      body: JSON.stringify(createForm.value)
     });
-    // Show success and the temporary password so admin can note credentials
+    
     toast.value = { message: data.message, type: 'success' };
-    if (data.temp_password) {
-      alert(`Doctor created. Temporary password: ${data.temp_password} \nMake sure to copy it now — it won't be shown again.`)
-    }
     getDashboardData(); // Refresh all data
+    closeCreateModal();
   } catch (e) { 
-    toast.value = { message: e.message, type: 'danger' };
+    // Toast is already handled by fetchApi
   }
 }
 
+// --- Edit & Details Functions ---
 function editItem(item, type) {
   openEditModal(item, type)
+}
+
+function openDetails(item, type) {
+  detailsType.value = type
+  detailsObject.value = item
+  // collect related appointments from loaded appointments
+  if (type === 'doctor') {
+    relatedAppointments.value = appointments.value.filter(a => Number(a.doctor_id) === Number(item.id || item.user_id)).sort((x,y) => new Date(y.datetime) - new Date(x.datetime))
+  } else {
+    relatedAppointments.value = appointments.value.filter(a => Number(a.patient_id) === Number(item.id)).sort((x,y) => new Date(y.datetime) - new Date(x.datetime))
+  }
+  showDetailsModal.value = true
+}
+
+function closeDetails() {
+  showDetailsModal.value = false
+  detailsObject.value = null
+  detailsType.value = null
+  relatedAppointments.value = []
+}
+
+// --- *** NEW: Export Patient History (from Details modal) *** ---
+async function exportPatientHistory(patientId, patientName) {
+   try {
+    toast.value = { message: `Generating history for ${patientName}...`, type: 'success' };
+    // Call the backend API to generate and return the CSV file
+    const blob = await fetchApi(`/api/patients/${patientId}/export-history`, {
+      method: 'GET'
+    }, true); // true = isFile
+
+    // Create a link and click it to download the blob
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = `${patientName.replace(/\s+/g, '_')}_treatment_history.csv`;
+    document.body.appendChild(a);
+    a.click();
+    window.URL.revokeObjectURL(url);
+    a.remove();
+    
+  } catch (error) {
+    // Error handled by fetchApi (it will show a toast)
+  }
 }
 
 function openEditModal(item, type) {
@@ -398,7 +604,7 @@ function closeEditModal() {
 
 async function submitEdit() {
   if (!editingUser.value) return
-  savingEdit.value = true
+  
   const userId = editingType.value === 'doctor' ? editingUser.value.user_id : (editingUser.value.id || editingUser.value.user_id)
   const payload = {
     name: editForm.value.name,
@@ -440,7 +646,7 @@ async function submitEdit() {
 
     closeEditModal()
   } catch (e) {
-    toast.value = { message: e.message, type: 'danger' }
+    // Toast is handled by fetchApi
     savingEdit.value = false
   }
 }
@@ -452,65 +658,64 @@ async function deleteItem(userId, name, type) {
     toast.value = { message: data.message, type: 'success' };
     getDashboardData(); // Refresh all data
   } catch (e) { 
-    toast.value = { message: e.message, type: 'danger' };
+    // Toast is handled by fetchApi
   }
 }
 
 async function blacklistItem(userId, name) {
-  // Determine current status from local state so confirmation can be specific
   const user = doctors.value.find(d => d.user_id === userId) || patients.value.find(p => p.id === userId)
   const currentlyBlacklisted = !!(user && user.is_blacklisted)
   const action = currentlyBlacklisted ? 'Unblock' : 'Block'
   if (!confirm(`Are you sure you want to ${action.toLowerCase()} ${name}?`)) return;
   try {
-    // Explicitly set new status to avoid backend toggle surprises
     const payload = { is_blacklisted: !currentlyBlacklisted }
     const data = await fetchApi(`/api/admin/users/${userId}/blacklist`, { method: 'PUT', body: JSON.stringify(payload) });
     toast.value = { message: data.message, type: 'success' };
-    // Update local copy so UI updates immediately without full reload
     if (user) {
-      user.is_blacklisted = !!data.is_blacklisted
-      // trigger reactivity
+      const newStatus = (typeof data.is_blacklisted === 'boolean') ? data.is_blacklisted : (data.user && typeof data.user.is_blacklisted === 'boolean' ? data.user.is_blacklisted : !currentlyBlacklisted)
+      user.is_blacklisted = !!newStatus
       if (doctors.value.includes(user)) doctors.value = [...doctors.value]
       if (patients.value.includes(user)) patients.value = [...patients.value]
     } else {
-      // fallback to refresh
       getDashboardData();
     }
   } catch (e) { 
-    toast.value = { message: e.message, type: 'danger' };
+    // Toast is handled by fetchApi
   }
 }
 
+// --- *** UPDATED: This function now opens a modal *** ---
 async function viewHistory(patientId, patientName) {
   try {
     const history = await fetchApi(`/api/patients/${patientId}/history`);
+    patientHistory.value = history;
+    historyPatientName.value = patientName;
     if (history.length === 0) {
       toast.value = { message: `No history found for ${patientName}.`, type: 'success' };
-    } else {
-      toast.value = { message: `Found ${history.length} records for ${patientName}. Check console.`, type: 'success' };
-      console.log(`History for ${patientName}:`, history);
     }
+    showHistoryModal.value = true; // Open the modal
   } catch (e) { 
-    toast.value = { message: e.message, type: 'danger' };
+    // Toast is handled by fetchApi
   }
 }
 
+function closeHistoryModal() {
+  showHistoryModal.value = false;
+  patientHistory.value = [];
+  historyPatientName.value = '';
+}
+
 // --- Initialization ---
-// Fetches real data from the backend
 async function getDashboardData() {
   try {
     const data = await fetchApi('/api/admin/dashboard');
-    console.debug('admin/dashboard response:', data)
     stats.value = data.stats;
     doctors.value = sortByCreatedDesc(data.doctors || []);
     patients.value = sortByCreatedDesc(data.patients || []);
-    console.debug('patients loaded:', patients.value.length, patients.value.slice(0,3))
     appointments.value = data.appointments || [];
     departments.value = data.departments || [];
   } catch (e) {
     console.error('Failed to load admin data', e)
-    toast.value = { message: `Failed to load dashboard data: ${e.message}`, type: 'danger' };
     if (e.message === 'Unauthorized') emit('logout');
   }
 }
@@ -521,7 +726,6 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* --- THIS IS THE RESTORED, FULL CSS --- */
 .hero-bg-admin {
   background: linear-gradient(90deg, rgba(142, 197, 252, 0.95) 0%, rgba(224, 195, 252, 0.95) 100%);
   height: 100vh;
@@ -555,23 +759,39 @@ onMounted(() => {
   padding-bottom: 2rem;
 }
 
-/* Edit modal styles */
-.edit-modal-wrapper {
+/* --- NEW: Modal Styles --- */
+.loading-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0,0,0,0.4);
+  background-color: rgba(255, 255, 255, 0.7);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 2000;
+  z-index: 9999;
 }
-.edit-modal {
-  background: white;
-  padding: 1.25rem;
-  border-radius: 8px;
-  width: 420px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(5px);
+  display: flex;
+  align-items: center; /* Vertically center */
+  justify-content: center;
+  z-index: 9998;
+  padding: 1rem;
+  overflow-y: auto; 
 }
+
+.modal-content {
+  background: #fff;
+  border-radius: 1rem;
+  border: none;
+  width: 90%;
+  /* max-width is set inline in the template */
+}
+/* --- End Modal Styles --- */
+
 
 .user-name { font-weight: 600; color: #444; font-size: 0.95rem }
 .logout-btn { background-color: #dc3545; color: white; border: none; padding: 0.4rem 1rem; border-radius: 8px; font-weight: 600 }
@@ -652,5 +872,59 @@ onMounted(() => {
 .btn-view {
   background-color: #0d6efd;
   color: white;
+}
+.btn-primary { font-weight: 600; }
+.btn-secondary { font-weight: 600; }
+
+.form-label {
+  font-weight: 600;
+  color: #333;
+}
+.form-control, .form-select {
+  padding: 0.75rem 1rem;
+  border-radius: 0.5rem;
+  background-color: rgba(248, 249, 250, 0.7);
+  border: 1px solid #e9ecef;
+}
+.form-control:focus, .form-select:focus {
+  background-color: #fff;
+  border-color: #8f7ece;
+  box-shadow: 0 0 0 0.25rem rgba(142, 197, 252, 0.5);
+}
+
+.details-header {
+  background-color: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+}
+.details-body {
+  padding: 0 0.5rem;
+}
+.details-history-list {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 0.5rem;
+  background: #fdfdfd;
+  border-radius: 0.5rem;
+  border: 1px solid #f0f0f0;
+}
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.25rem 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+.history-item:last-child {
+  border-bottom: none;
+}
+
+/* *** NEW: History Record (for history modal) *** */
+.history-record {
+  border-left: 4px solid #0d6efd;
 }
 </style>
